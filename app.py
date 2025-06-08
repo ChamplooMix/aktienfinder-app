@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import altair as alt
 from requests.exceptions import HTTPError
+from json.decoder import JSONDecodeError
 
 # Seitenkonfiguration
 st.set_page_config(
@@ -49,33 +50,41 @@ if ticker:
         df = get_history(ticker, period)
         info = get_info(ticker)
 
-        # Chart mit Altair und Highlight-Farben
-        df_reset = df.reset_index()
-        chart = alt.Chart(df_reset).mark_line(point=True).encode(
-            x="Date:T",
-            y=alt.Y("Close:Q", title="Schlusskurs"),
-            tooltip=["Date","Close"]
-        ).properties(width=600, height=300)
-        st.altair_chart(chart, use_container_width=True)
+        # Prüfen, ob Daten vorhanden sind
+        if df.empty:
+            st.error(f"Keine Kursdaten für '{ticker}' gefunden. Symbol ungültig oder keine Daten verfügbar.")
+        else:
+            # Chart mit Altair und Highlight-Farben
+            df_reset = df.reset_index()
+            chart = alt.Chart(df_reset).mark_line(point=True).encode(
+                x="Date:T",
+                y=alt.Y("Close:Q", title="Schlusskurs"),
+                tooltip=["Date","Close"]
+            ).properties(width=600, height=300)
+            st.altair_chart(chart, use_container_width=True)
 
-        # Kennzahlen
-        cols = st.columns(2)
-        with cols[0]:
-            st.metric("Aktueller Kurs", f"{info.get('regularMarketPrice', 'n/a')} {info.get('currency', '')}")
-            st.metric("Marktkapitalisierung", f"{info.get('marketCap', 'n/a'):,}")
-        with cols[1]:
-            st.metric("PE Ratio", info.get('trailingPE', 'n/a'))
-            dividend = info.get('dividendYield', 0)
-            st.metric("Dividendenrendite", f"{dividend*100:.2f}%" if dividend else "n/a")
+            # Kennzahlen
+            cols = st.columns(2)
+            with cols[0]:
+                price = info.get('regularMarketPrice', 'n/a')
+                curr = info.get('currency', '')
+                st.metric("Aktueller Kurs", f"{price} {curr}")
+                st.metric("Marktkapitalisierung", f"{info.get('marketCap', 'n/a'):,}")
+            with cols[1]:
+                st.metric("PE Ratio", info.get('trailingPE', 'n/a'))
+                dividend = info.get('dividendYield', 0)
+                st.metric("Dividendenrendite", f"{dividend*100:.2f}%" if dividend else "n/a")
 
-        # Daten als Tabelle
-        st.subheader("Historische Daten")
-        st.dataframe(df)
+            # Daten als Tabelle
+            st.subheader("Historische Daten")
+            st.dataframe(df)
 
     except HTTPError as http_err:
         if http_err.response.status_code == 429:
             st.error("Fehler 429: Zu viele Anfragen an Yahoo Finance. Bitte warte einen Moment und versuche es erneut.")
         else:
             st.error(f"HTTP-Fehler beim Abrufen der Daten: {http_err}")
+    except JSONDecodeError:
+        st.error("Fehler beim Verarbeiten der Antwort von Yahoo Finance. Bitte versuche es später erneut.")
     except Exception as e:
-        st.error(f"Fehler beim Abrufen der Daten: {e}")
+        st.error(f"Unerwarteter Fehler: {e}")
