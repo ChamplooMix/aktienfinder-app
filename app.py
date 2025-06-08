@@ -75,8 +75,14 @@ if ticker:
                 st.metric("Marktkapitalisierung", f"{info.get('marketCap','n/a'):,}")
             with cols[1]:
                 st.metric("PE Ratio", info.get('trailingPE','n/a'))
-                div = info.get('dividendYield', 0)
-                st.metric("Dividendenrendite", f"{div*100:.2f}%" if div else "n/a")
+                # Manuelle Dividendenrendite berechnen: dividendRate / Kurs
+                div_rate = info.get('dividendRate', 0)
+                price_price = info.get('regularMarketPrice', 0)
+                if div_rate and price_price:
+                    div_yield = div_rate / price_price
+                    st.metric("Dividendenrendite", f"{div_yield*100:.2f}%")
+                else:
+                    st.metric("Dividendenrendite", "n/a")
 
             # Tabelle
             st.subheader("Letzte 90 Tage: Schlusskurse")
