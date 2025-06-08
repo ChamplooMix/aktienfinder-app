@@ -26,15 +26,30 @@ st.markdown(
 # Caching-Funktionen
 @st.cache_data(ttl=3600)
 def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
-    ticker = yf.Ticker(ticker_symbol)
-    if period == "1d":
-        return ticker.history(period=period, interval="5m")
-    return ticker.history(period=period)
+    """Lädt historische Kursdaten mit yf.download."""
+    interval = "5m" if period == "1d" else "1d"
+    try:
+        df = yf.download(
+            tickers=ticker_symbol,
+            period=period,
+            interval=interval,
+            progress=False,
+            threads=False
+        )
+    except HTTPError:
+        raise
+    except Exception:
+        return pd.DataFrame()
+    return df
 
 @st.cache_data(ttl=3600)
 def get_info(ticker_symbol: str) -> dict:
-    ticker = yf.Ticker(ticker_symbol)
-    return ticker.info
+    """Lädt Fundamentaldaten über yf.Ticker.info."""
+    try:
+        ticker = yf.Ticker(ticker_symbol)
+        return ticker.info
+    except (JSONDecodeError, HTTPError, KeyError, ValueError):
+        return {}
 
 # User Input
 st.markdown("**Ticker eingeben (z.B. AAPL, MSFT)**")
@@ -57,16 +72,18 @@ if ticker:
             # Chart
             df_reset = df.reset_index()
             chart = alt.Chart(df_reset).mark_line(point=True).encode(
-                x="Date:T",
+                x="Datetime:T",
                 y=alt.Y("Close:Q", title="Schlusskurs"),
-                tooltip=["Date","Close"]
+                tooltip=["Datetime","Close"]
             ).properties(width=600, height=300)
             st.altair_chart(chart, use_container_width=True)
 
             # Kennzahlen
             cols = st.columns(2)
             with cols[0]:
-                st.metric("Aktueller Kurs", f"{info.get('regularMarketPrice','n/a')} {info.get('currency','')}" )
+                price = info.get('regularMarketPrice', 'n/a')
+                curr = info.get('currency', '')
+                st.metric("Aktueller Kurs", f"{price} {curr}")
                 st.metric("Marktkapitalisierung", f"{info.get('marketCap','n/a'):,}")
             with cols[1]:
                 st.metric("PE Ratio", info.get('trailingPE','n/a'))
