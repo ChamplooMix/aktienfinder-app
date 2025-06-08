@@ -51,7 +51,7 @@ def get_info(ticker_symbol: str) -> dict:
     try:
         data = si.get_quote_data(ticker_symbol)
         live = si.get_live_price(ticker_symbol)
-    except (JSONDecodeError, HTTPError, KeyError):
+    except (JSONDecodeError, HTTPError, KeyError, ValueError):
         return {}
     return {
         "regularMarketPrice": live,
@@ -106,5 +106,7 @@ if ticker:
             st.error(f"HTTP-Fehler: {http_err}")
     except JSONDecodeError:
         st.error("Antwort-Parsing-Fehler. Bitte später erneut versuchen.")
+    except ValueError:
+        st.error("Ungültiges Tickersymbol oder keine Daten verfügbar.")
     except Exception as e:
         st.error(f"Unerwarteter Fehler: {e}")
