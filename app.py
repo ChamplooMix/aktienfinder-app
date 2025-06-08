@@ -26,15 +26,21 @@ st.markdown(
 # Caching-Funktionen
 @st.cache_data(ttl=3600)
 def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
-    """Lädt historische Kursdaten mit yf.download."""
-    interval = "5m" if period == "1d" else "1d"
+    """Lädt historische Kursdaten mit yf.Ticker.history laut yfinance-Dokumentation."""
+    ticker = yf.Ticker(ticker_symbol)
+    # Intervall entsprechend offiziellem Guide wählen
+    if period == "1d":
+        interval = "5m"
+    elif period == "5d":
+        interval = "15m"
+    else:
+        interval = "1d"
     try:
-        df = yf.download(
-            tickers=ticker_symbol,
+        df = ticker.history(
             period=period,
             interval=interval,
-            progress=False,
-            threads=False
+            actions=False,
+            auto_adjust=True
         )
     except HTTPError:
         raise
