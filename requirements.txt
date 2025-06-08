@@ -1,5 +1,6 @@
 streamlit==1.27.0
-yfinance==0.2.25
+# Neueste yfinance-Version für aktuelle Funktionen
+yfinance==0.2.62
 pandas==2.0.2
 altair==5.0.1
 pillow==9.4.0
