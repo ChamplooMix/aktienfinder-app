@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
+import time
 from requests.exceptions import HTTPError
 from json.decoder import JSONDecodeError
 
@@ -22,16 +23,33 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Retry-Decorator für API-Aufrufe mit Backoff
+@st.cache_data(ttl=3600)
+def retry_api_call(func, *args, **kwargs):
+    """Versucht API-Aufruf bis zu 3x mit exponentiellem Backoff."""
+    max_retries = 3
+    delay = 1
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except HTTPError as http_err:
+            if http_err.response.status_code == 429 and attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            else:
+                raise
+
 # Caching-Funktionen für Yahoo Finance API-Aufrufe
 @st.cache_data(ttl=3600)
 def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
     ticker_obj = yf.Ticker(ticker_symbol)
-    return ticker_obj.history(period=period)
+    return retry_api_call(ticker_obj.history, period=period)
 
 @st.cache_data(ttl=3600)
 def get_info(ticker_symbol: str) -> dict:
     ticker_obj = yf.Ticker(ticker_symbol)
-    return ticker_obj.info
+    return retry_api_call(ticker_obj.info)
 
 # Eingabebereich
 st.markdown("**Gib ein Tickersymbol ein (z.B. AAPL, MSFT)**")
@@ -46,11 +64,10 @@ period = st.selectbox(
 
 if ticker:
     try:
-        # Daten abrufen (aus Cache oder neu)
-        df = get_history(ticker, period)
-        info = get_info(ticker)
+        with st.spinner("Daten werden geladen..."):
+            df = get_history(ticker, period)
+            info = get_info(ticker)
 
-        # Prüfen, ob Daten vorhanden sind
         if df.empty:
             st.error(f"Keine Kursdaten für '{ticker}' gefunden. Symbol ungültig oder keine Daten verfügbar.")
         else:
