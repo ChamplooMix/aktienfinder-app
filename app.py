@@ -1,5 +1,5 @@
 import streamlit as st
-import yfinance as yf
+from yahoo_fin import stock_info as si
 import pandas as pd
 import altair as alt
 import time
@@ -23,72 +23,63 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Retry-Helper mit Backoff (nicht gecached)
-def retry_api_call(func, *args, **kwargs):
-    max_retries = 3
-    delay = 1
-    for attempt in range(max_retries):
-        try:
-            return func(*args, **kwargs)
-        except HTTPError as http_err:
-            if http_err.response.status_code == 429 and attempt < max_retries - 1:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            else:
-                raise
-
 # Caching der API-Aufrufe
 @st.cache_data(ttl=3600)
-def get_history(ticker_symbol: str, period: str, interval: str = None) -> pd.DataFrame:
-    ticker_obj = yf.Ticker(ticker_symbol)
-    if interval:
-        return retry_api_call(ticker_obj.history, period=period, interval=interval)
-    return retry_api_call(ticker_obj.history, period=period)
+def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
+    end = pd.Timestamp.today().normalize()
+    period_map = {"1d":1, "5d":5, "1mo":30, "3mo":90, "6mo":180, "1y":365, "5y":1825, "max":3650}
+    days = period_map.get(period,30)
+    start = end - pd.Timedelta(days=days)
+    interval = "5m" if period == "1d" else "1d"
+    df = si.get_data(
+        ticker_symbol,
+        start_date=start.strftime("%Y-%m-%d"),
+        end_date=end.strftime("%Y-%m-%d"),
+        interval=interval
+    )
+    return df
 
 @st.cache_data(ttl=3600)
 def get_info(ticker_symbol: str) -> dict:
-    ticker_obj = yf.Ticker(ticker_symbol)
-    return retry_api_call(ticker_obj.info)
+    # Basisdaten aus quote data
+    data = si.get_quote_data(ticker_symbol)
+    live = si.get_live_price(ticker_symbol)
+    return {
+        "regularMarketPrice": live,
+        "currency": data.get("currency"),
+        "marketCap": data.get("marketCap"),
+        "trailingPE": data.get("trailingPE"),
+        "dividendYield": data.get("dividendYield")
+    }
 
 # User Input
 st.markdown("**Ticker eingeben (z.B. AAPL, MSFT)**")
 ticker = st.text_input("Ticker", value="AAPL").upper()
-period = st.selectbox("Zeitraum", ["1d","5d","1mo","3mo","6mo","1y","5y","max"], index=2)
+period = st.selectbox(
+    "Zeitraum",
+    ["1d","5d","1mo","3mo","6mo","1y","5y","max"],
+    index=2
+)
 
 if ticker:
     try:
         with st.spinner("Daten werden geladen..."):
-            # Fallback-Logik bei 429 auf Intraday
-            try:
-                if period == "1d":
-                    df = get_history(ticker, period, interval="5m")
-                else:
-                    df = get_history(ticker, period)
-            except HTTPError as http_err:
-                if http_err.response.status_code == 429 and period == "1d":
-                    st.warning("Rate-Limit bei Intraday, wechsle zu 5d und filtere letzten Tag.")
-                    df_full = get_history(ticker, "5d", interval="5m")
-                    df = df_full.last("1D")
-                else:
-                    raise
+            df = get_history(ticker, period)
             info = get_info(ticker)
 
         if df.empty:
             st.error(f"Keine Kursdaten für '{ticker}' gefunden.")
         else:
-            # Chart
             df_reset = df.reset_index()
             chart = alt.Chart(df_reset).mark_line(point=True).encode(
-                x="Date:T", y=alt.Y("Close:Q", title="Schlusskurs"), tooltip=["Date","Close"]
+                x="date:T", y=alt.Y("close:Q", title="Schlusskurs"), tooltip=["date","close"]
             ).properties(width=600, height=300)
             st.altair_chart(chart, use_container_width=True)
 
-            # Kennzahlen
             cols = st.columns(2)
             with cols[0]:
-                st.metric("Aktueller Kurs", f"{info.get('regularMarketPrice','n/a')} {info.get('currency','')}" )
-                st.metric("Marktkapitalisierung", f"{info.get('marketCap','n/a'):,}")
+                st.metric("Aktueller Kurs", f"{info['regularMarketPrice']:.2f} {info['currency']}" )
+                st.metric("Marktkapitalisierung", f"{info['marketCap']:,}")
             with cols[1]:
                 st.metric("PE Ratio", info.get('trailingPE','n/a'))
                 div = info.get('dividendYield',0)
