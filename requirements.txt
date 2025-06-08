@@ -2,3 +2,4 @@ streamlit==1.27.0
 yfinance==0.2.25
 pandas==2.0.2
 altair==5.0.1
+pillow==9.4.0   # Pin auf eine vorkompilierte Version für Python 3.13
