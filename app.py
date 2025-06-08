@@ -43,6 +43,9 @@ def retry_api_call(_func, *args, **kwargs):
 @st.cache_data(ttl=3600)
 def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
     ticker_obj = yf.Ticker(ticker_symbol)
+    # Für Intraday-Daten bei tagesaktuellen Abfragen
+    if period == "1d":
+        return retry_api_call(ticker_obj.history, period=period, interval="5m")
     return retry_api_call(ticker_obj.history, period=period)
 
 @st.cache_data(ttl=3600)
