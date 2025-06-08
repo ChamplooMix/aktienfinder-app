@@ -39,12 +39,8 @@ def get_info(ticker_symbol: str) -> dict:
         "trailingPE": data.get("trailingPE"),
         "dividendYield": data.get("dividendYield")
     }
-        "regularMarketPrice": live,
-        "currency": data.get("currency"),
-        "marketCap": data.get("marketCap"),
-        "trailingPE": data.get("trailingPE"),
-        "dividendYield": data.get("dividendYield")
-    }
+
+# User Input
 
 # User Input
 st.markdown("**Ticker eingeben (z.B. AAPL, MSFT)**")
