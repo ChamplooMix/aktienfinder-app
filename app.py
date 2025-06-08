@@ -25,12 +25,33 @@ st.markdown(
 
 # Caching der API-Aufrufe
 @st.cache_data(ttl=3600)
+def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
+    """Lädt historische Daten über yahoo_fin."""
+    end = pd.Timestamp.today().normalize()
+    period_map = {"1d":1, "5d":5, "1mo":30, "3mo":90, "6mo":180, "1y":365, "5y":1825, "max":3650}
+    days = period_map.get(period, 30)
+    start = end - pd.Timedelta(days=days)
+    interval = "5m" if period == "1d" else "1d"
+    try:
+        df = si.get_data(
+            ticker_symbol,
+            start_date=start.strftime("%Y-%m-%d"),
+            end_date=end.strftime("%Y-%m-%d"),
+            interval=interval
+        )
+    except HTTPError as http_err:
+        raise
+    except Exception:
+        return pd.DataFrame()
+    return df
+
+@st.cache_data(ttl=3600)
 def get_info(ticker_symbol: str) -> dict:
     """Lädt Kennzahlen, fängt Parsing- und HTTP-Fehler ab und liefert leeres Dict bei Problemen."""
     try:
         data = si.get_quote_data(ticker_symbol)
         live = si.get_live_price(ticker_symbol)
-    except (JSONDecodeError, HTTPError):
+    except (JSONDecodeError, HTTPError, KeyError):
         return {}
     return {
         "regularMarketPrice": live,
@@ -39,8 +60,6 @@ def get_info(ticker_symbol: str) -> dict:
         "trailingPE": data.get("trailingPE"),
         "dividendYield": data.get("dividendYield")
     }
-
-# User Input
 
 # User Input
 st.markdown("**Ticker eingeben (z.B. AAPL, MSFT)**")
@@ -68,11 +87,13 @@ if ticker:
 
             cols = st.columns(2)
             with cols[0]:
-                st.metric("Aktueller Kurs", f"{info['regularMarketPrice']:.2f} {info['currency']}" )
-                st.metric("Marktkapitalisierung", f"{info['marketCap']:,}")
+                price = info.get('regularMarketPrice', 'n/a')
+                curr = info.get('currency', '')
+                st.metric("Aktueller Kurs", f"{price:.2f} {curr}")
+                st.metric("Marktkapitalisierung", f"{info.get('marketCap', 'n/a'):,}")
             with cols[1]:
                 st.metric("PE Ratio", info.get('trailingPE','n/a'))
-                div = info.get('dividendYield',0)
+                div = info.get('dividendYield', 0)
                 st.metric("Dividendenrendite", f"{div*100:.2f}%" if div else "n/a")
 
             st.subheader("Historische Daten")
