@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
-import time
 from requests.exceptions import HTTPError
 from json.decoder import JSONDecodeError
 
@@ -23,25 +22,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Caching-Funktionen
+# Funktion zum Laden der letzten 90 Tage mit täglichen Schlusskursen
 @st.cache_data(ttl=3600)
-def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
-    """Lädt historische Kursdaten mit yf.Ticker.history laut yfinance-Dokumentation."""
+def get_history_last_90_days(ticker_symbol: str) -> pd.DataFrame:
+    """Lädt die letzten 90 Tage an täglichen Schlusskursen."""
     ticker = yf.Ticker(ticker_symbol)
-    # Intervall entsprechend offiziellem Guide wählen
-    if period == "1d":
-        interval = "5m"
-    elif period == "5d":
-        interval = "15m"
-    else:
-        interval = "1d"
     try:
-        df = ticker.history(
-            period=period,
-            interval=interval,
-            actions=False,
-            auto_adjust=True
-        )
+        df = ticker.history(period="90d", interval="1d", actions=False, auto_adjust=True)
     except HTTPError:
         raise
     except Exception:
@@ -60,27 +47,22 @@ def get_info(ticker_symbol: str) -> dict:
 # User Input
 st.markdown("**Ticker eingeben (z.B. AAPL, MSFT)**")
 ticker = st.text_input("Ticker", value="AAPL").upper()
-period = st.selectbox(
-    "Zeitraum",
-    ["1d","5d","1mo","3mo","6mo","1y","5y","max"],
-    index=2
-)
 
 if ticker:
     try:
         with st.spinner("Daten werden geladen…"):
-            df = get_history(ticker, period)
+            df = get_history_last_90_days(ticker)
             info = get_info(ticker)
 
         if df.empty:
             st.error(f"Keine Kursdaten für '{ticker}' gefunden.")
         else:
-            # Chart
+            # Chart täglich
             df_reset = df.reset_index()
             chart = alt.Chart(df_reset).mark_line(point=True).encode(
-                x="Datetime:T",
+                x="Date:T",
                 y=alt.Y("Close:Q", title="Schlusskurs"),
-                tooltip=["Datetime","Close"]
+                tooltip=["Date","Close"]
             ).properties(width=600, height=300)
             st.altair_chart(chart, use_container_width=True)
 
@@ -97,8 +79,8 @@ if ticker:
                 st.metric("Dividendenrendite", f"{div*100:.2f}%" if div else "n/a")
 
             # Tabelle
-            st.subheader("Historische Daten")
-            st.dataframe(df)
+            st.subheader("Letzte 90 Tage: Schlusskurse")
+            st.dataframe(df[['Close']])
 
     except HTTPError as http_err:
         if http_err.response.status_code == 429:
