@@ -25,26 +25,20 @@ st.markdown(
 
 # Caching der API-Aufrufe
 @st.cache_data(ttl=3600)
-def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
-    end = pd.Timestamp.today().normalize()
-    period_map = {"1d":1, "5d":5, "1mo":30, "3mo":90, "6mo":180, "1y":365, "5y":1825, "max":3650}
-    days = period_map.get(period,30)
-    start = end - pd.Timedelta(days=days)
-    interval = "5m" if period == "1d" else "1d"
-    df = si.get_data(
-        ticker_symbol,
-        start_date=start.strftime("%Y-%m-%d"),
-        end_date=end.strftime("%Y-%m-%d"),
-        interval=interval
-    )
-    return df
-
-@st.cache_data(ttl=3600)
 def get_info(ticker_symbol: str) -> dict:
-    # Basisdaten aus quote data
-    data = si.get_quote_data(ticker_symbol)
-    live = si.get_live_price(ticker_symbol)
+    """Lädt Kennzahlen, fängt Parsing- und HTTP-Fehler ab und liefert leeres Dict bei Problemen."""
+    try:
+        data = si.get_quote_data(ticker_symbol)
+        live = si.get_live_price(ticker_symbol)
+    except (JSONDecodeError, HTTPError):
+        return {}
     return {
+        "regularMarketPrice": live,
+        "currency": data.get("currency"),
+        "marketCap": data.get("marketCap"),
+        "trailingPE": data.get("trailingPE"),
+        "dividendYield": data.get("dividendYield")
+    }
         "regularMarketPrice": live,
         "currency": data.get("currency"),
         "marketCap": data.get("marketCap"),
