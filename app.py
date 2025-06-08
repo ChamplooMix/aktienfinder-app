@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
+from requests.exceptions import HTTPError
 
 # Seitenkonfiguration
 st.set_page_config(
@@ -20,6 +21,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# Caching-Funktionen für Yahoo Finance API-Aufrufe
+@st.cache_data(ttl=3600)
+def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
+    ticker_obj = yf.Ticker(ticker_symbol)
+    return ticker_obj.history(period=period)
+
+@st.cache_data(ttl=3600)
+def get_info(ticker_symbol: str) -> dict:
+    ticker_obj = yf.Ticker(ticker_symbol)
+    return ticker_obj.info
+
 # Eingabebereich
 st.markdown("**Gib ein Tickersymbol ein (z.B. AAPL, MSFT)**")
 ticker = st.text_input("Ticker", value="AAPL").upper()
@@ -33,8 +45,9 @@ period = st.selectbox(
 
 if ticker:
     try:
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period)
+        # Daten abrufen (aus Cache oder neu)
+        df = get_history(ticker, period)
+        info = get_info(ticker)
 
         # Chart mit Altair und Highlight-Farben
         df_reset = df.reset_index()
@@ -46,17 +59,23 @@ if ticker:
         st.altair_chart(chart, use_container_width=True)
 
         # Kennzahlen
-        info = stock.info
         cols = st.columns(2)
         with cols[0]:
-            st.metric("Aktueller Kurs", f"{info['regularMarketPrice']:.2f} {info['currency']}")
-            st.metric("Marktkapitalisierung", f"{info['marketCap']:,}")
+            st.metric("Aktueller Kurs", f"{info.get('regularMarketPrice', 'n/a')} {info.get('currency', '')}")
+            st.metric("Marktkapitalisierung", f"{info.get('marketCap', 'n/a'):,}")
         with cols[1]:
             st.metric("PE Ratio", info.get('trailingPE', 'n/a'))
-            st.metric("Dividendenrendite", f"{info.get('dividendYield',0)*100:.2f}%")
+            dividend = info.get('dividendYield', 0)
+            st.metric("Dividendenrendite", f"{dividend*100:.2f}%" if dividend else "n/a")
 
         # Daten als Tabelle
         st.subheader("Historische Daten")
         st.dataframe(df)
+
+    except HTTPError as http_err:
+        if http_err.response.status_code == 429:
+            st.error("Fehler 429: Zu viele Anfragen an Yahoo Finance. Bitte warte einen Moment und versuche es erneut.")
+        else:
+            st.error(f"HTTP-Fehler beim Abrufen der Daten: {http_err}")
     except Exception as e:
         st.error(f"Fehler beim Abrufen der Daten: {e}")
