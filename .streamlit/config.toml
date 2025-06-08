@@ -1,0 +1,10 @@
+[theme]
+primaryColor = "#207373"          # Skobeloff
+backgroundColor = "#cae3e3"       # Powder Green Light
+secondaryBackgroundColor = "#99cccc" # Powder Green
+textColor = "#044647"             # Warm Black
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
