@@ -23,14 +23,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Retry-Helper mit Backoff (Argument _func nicht gehashed)
-@st.cache_data(ttl=3600)
-def retry_api_call(_func, *args, **kwargs):
+# Retry-Helper mit Backoff (nicht gecached)
+def retry_api_call(func, *args, **kwargs):
     max_retries = 3
     delay = 1
     for attempt in range(max_retries):
         try:
-            return _func(*args, **kwargs)
+            return func(*args, **kwargs)
         except HTTPError as http_err:
             if http_err.response.status_code == 429 and attempt < max_retries - 1:
                 time.sleep(delay)
@@ -41,11 +40,10 @@ def retry_api_call(_func, *args, **kwargs):
 
 # Caching der API-Aufrufe
 @st.cache_data(ttl=3600)
-def get_history(ticker_symbol: str, period: str) -> pd.DataFrame:
+def get_history(ticker_symbol: str, period: str, interval: str = None) -> pd.DataFrame:
     ticker_obj = yf.Ticker(ticker_symbol)
-    # Für Intraday-Daten bei tagesaktuellen Abfragen
-    if period == "1d":
-        return retry_api_call(ticker_obj.history, period=period, interval="5m")
+    if interval:
+        return retry_api_call(ticker_obj.history, period=period, interval=interval)
     return retry_api_call(ticker_obj.history, period=period)
 
 @st.cache_data(ttl=3600)
@@ -61,18 +59,32 @@ period = st.selectbox("Zeitraum", ["1d","5d","1mo","3mo","6mo","1y","5y","max"],
 if ticker:
     try:
         with st.spinner("Daten werden geladen..."):
-            df = get_history(ticker, period)
+            # Fallback-Logik bei 429 auf Intraday
+            try:
+                if period == "1d":
+                    df = get_history(ticker, period, interval="5m")
+                else:
+                    df = get_history(ticker, period)
+            except HTTPError as http_err:
+                if http_err.response.status_code == 429 and period == "1d":
+                    st.warning("Rate-Limit bei Intraday, wechsle zu 5d und filtere letzten Tag.")
+                    df_full = get_history(ticker, "5d", interval="5m")
+                    df = df_full.last("1D")
+                else:
+                    raise
             info = get_info(ticker)
 
         if df.empty:
             st.error(f"Keine Kursdaten für '{ticker}' gefunden.")
         else:
+            # Chart
             df_reset = df.reset_index()
             chart = alt.Chart(df_reset).mark_line(point=True).encode(
                 x="Date:T", y=alt.Y("Close:Q", title="Schlusskurs"), tooltip=["Date","Close"]
             ).properties(width=600, height=300)
             st.altair_chart(chart, use_container_width=True)
 
+            # Kennzahlen
             cols = st.columns(2)
             with cols[0]:
                 st.metric("Aktueller Kurs", f"{info.get('regularMarketPrice','n/a')} {info.get('currency','')}" )
