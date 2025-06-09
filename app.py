@@ -54,43 +54,32 @@ if st.session_state.view == 'Übersicht':
     data = []
     for t in tickers:
         info = get_info(t)
-        cap = info.get('marketCap', 0)
-        price = info.get('regularMarketPrice', 0)
-        hist = get_history_last_90_days(t)
-        change = hist['Change'].iloc[-1] if not hist.empty else None
-        pe = info.get('trailingPE', None)
-        high = info.get('fiftyTwoWeekHigh', None)
-        low = info.get('fiftyTwoWeekLow', None)
-        data.append({'Ticker': t, 'MarketCap': cap, 'Price': price,
-                     'Change': change, 'P/E': pe, '52wHigh': high, '52wLow': low})
+        data.append({
+            'Ticker': t,
+            'MarketCap': info.get('marketCap', 0),
+            'Price': info.get('regularMarketPrice', 0),
+            'Change %': (get_history_last_90_days(t)['Change'].iloc[-1] if not get_history_last_90_days(t).empty else None),
+            'P/E': info.get('trailingPE', None),
+            '52wHigh': info.get('fiftyTwoWeekHigh', None),
+            '52wLow': info.get('fiftyTwoWeekLow', None)
+        })
     df_overview = pd.DataFrame(data).sort_values('MarketCap', ascending=False)
 
     # Pagination
     page = st.sidebar.number_input("Seite", 1, 2, 1)
     per_page = 10
-    df_page = df_overview.iloc[(page-1)*per_page:page*per_page]
+    df_page = df_overview.iloc[(page-1)*per_page:page*per_page].copy()
+    df_page['MarketCap'] = df_page['MarketCap'].map(lambda x: f"{x:,}")
 
-    # Tabelle mit klickbaren Tickers
-    cols = st.columns([1,2,1,1,1,1,1])
-    cols[0].write("**Ticker**")
-    cols[1].write("**MarketCap**")
-    cols[2].write("**Price**")
-    cols[3].write("**Change %**")
-    cols[4].write("**P/E**")
-    cols[5].write("**52wHigh**")
-    cols[6].write("**52wLow**")
-    for row in df_page.itertuples():
-        cols = st.columns([1,2,1,1,1,1,1])
-        if cols[0].button(row.Ticker, key=f"btn_{row.Ticker}"):
-            st.session_state.view = 'Detailansicht'
-            st.session_state.selected_ticker = row.Ticker
-            st.experimental_rerun()
-        cols[1].write(f"{row.MarketCap:,}")
-        cols[2].write(f"{row.Price}")
-        cols[3].write(f"{row.Change:.2f}%" if row.Change is not None else 'n/a')
-        cols[4].write(f"{row._5}:.2f" if row._5 else 'n/a')  # trailingPE is at index _5
-        cols[5].write(f"{row._6:.2f}" if row._6 else 'n/a')  # fiftyTwoWeekHigh
-        cols[6].write(f"{row._7:.2f}" if row._7 else 'n/a')  # fiftyTwoWeekLow
+    # Übersichtstabelle
+    st.dataframe(df_page, use_container_width=True)
+
+    # Auswahlbox für Details (mobilfreundlich)
+    selected = st.selectbox('Ticker für Detailansicht wählen', df_page['Ticker'].tolist())
+    if st.button('Details anzeigen'):
+        st.session_state.view = 'Detailansicht'
+        st.session_state.selected_ticker = selected
+        st.experimental_rerun()
 
 elif st.session_state.view == 'Detailansicht':
     ticker = st.session_state.selected_ticker
