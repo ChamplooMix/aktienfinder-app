@@ -48,17 +48,17 @@ st.markdown(
 
 if st.session_state.view == 'Übersicht':
     st.subheader("Top 20 nach Marktkapitalisierung (weltweit)")
-    # Beispiel-Liste, anpassbar
     tickers = ["AAPL","MSFT","GOOGL","AMZN","TSLA","NVDA","META","BABA","TSM","V",
                "JNJ","WMT","JPM","UNH","LVMUY","ROIC.F","SAP.DE","TM","OR.PA","NESN.SW"]
     data = []
     for t in tickers:
         info = get_info(t)
+        hist = get_history_last_90_days(t)
         data.append({
             'Ticker': t,
             'MarketCap': info.get('marketCap', 0),
             'Price': info.get('regularMarketPrice', 0),
-            'Change %': (get_history_last_90_days(t)['Change'].iloc[-1] if not get_history_last_90_days(t).empty else None),
+            'Change %': hist['Change'].iloc[-1] if not hist.empty else None,
             'P/E': info.get('trailingPE', None),
             '52wHigh': info.get('fiftyTwoWeekHigh', None),
             '52wLow': info.get('fiftyTwoWeekLow', None)
@@ -66,20 +66,25 @@ if st.session_state.view == 'Übersicht':
     df_overview = pd.DataFrame(data).sort_values('MarketCap', ascending=False)
 
     # Pagination
-    page = st.sidebar.number_input("Seite", 1, 2, 1)
+    page = st.sidebar.number_input("Seite", 1, (len(df_overview)//10), 1)
     per_page = 10
     df_page = df_overview.iloc[(page-1)*per_page:page*per_page].copy()
     df_page['MarketCap'] = df_page['MarketCap'].map(lambda x: f"{x:,}")
 
-    # Übersichtstabelle
-    st.dataframe(df_page, use_container_width=True)
-
-    # Auswahlbox für Details (mobilfreundlich)
-    selected = st.selectbox('Ticker für Detailansicht wählen', df_page['Ticker'].tolist())
-    if st.button('Details anzeigen'):
-        st.session_state.view = 'Detailansicht'
-        st.session_state.selected_ticker = selected
-        st.experimental_rerun()
+    # Scrollbare Tabelle mit Buttons für Ticker
+    st.markdown("<style>div.stDataFrame div.row_widget{display:flex;flex-wrap:nowrap;overflow-x:auto;}</style>", unsafe_allow_html=True)
+    for row in df_page.itertuples(index=False):
+        cols = st.columns([1,2,1,1,1,1,1], gap="small")
+        if cols[0].button(row.Ticker, key=f"btn_{row.Ticker}"):
+            st.session_state.view = 'Detailansicht'
+            st.session_state.selected_ticker = row.Ticker
+            st.experimental_rerun()
+        cols[1].write(row.MarketCap)
+        cols[2].write(row.Price)
+        cols[3].write(f"{row._4:.2f}%" if row._4 is not None else 'n/a')
+        cols[4].write(f"{row._5:.2f}" if row._5 else 'n/a')
+        cols[5].write(f"{row._6:.2f}" if row._6 else 'n/a')
+        cols[6].write(f"{row._7:.2f}" if row._7 else 'n/a')
 
 elif st.session_state.view == 'Detailansicht':
     ticker = st.session_state.selected_ticker
